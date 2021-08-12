@@ -38,14 +38,19 @@
 			GL.DeleteShader(fragmentShader);
 		}
 
-		public void LayoutAttribute(string name, int offset, int amount, int stride, bool instanced)
+		public void LayoutAttribute(string name, int offset, int amount, int stride, bool instanced, int entries = 1)
 		{
 			var index = GL.GetAttribLocation(this.Program, name);
-			GL.EnableVertexAttribArray(index);
-			GL.VertexAttribPointer(index, amount, VertexAttribPointerType.Float, false, stride, offset);
+			var entrySize = amount / entries;
 
-			if (instanced)
-				GL.VertexAttribDivisor(index, 1);
+			for (var i = 0; i < entries; i++)
+			{
+				GL.EnableVertexAttribArray(index + i);
+				GL.VertexAttribPointer(index + i, entrySize, VertexAttribPointerType.Float, false, stride, offset + i * entrySize * sizeof(float));
+
+				if (instanced)
+					GL.VertexAttribDivisor(index + i, 1);
+			}
 		}
 
 		public void Dispose()

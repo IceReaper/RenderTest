@@ -25,7 +25,6 @@
 
 			void main()
 			{
-				// TODO this crashes when using iTransform!
 				gl_Position = uProjection * uView * iTransform * vec4(aPosition, 1.0);
 				vNormal = aNormal;
 				vUv = aUv;
@@ -76,7 +75,7 @@
 
 		protected override void LayoutInstancedAttributes()
 		{
-			this.Shader.LayoutAttribute("iTransform", 0, 16, this.InstanceStride, true);
+			this.Shader.LayoutAttribute("iTransform", 0, 16, this.InstanceStride, true, 4);
 		}
 
 		public void Render(Scene scene, Camera camera)

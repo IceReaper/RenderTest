@@ -24,11 +24,11 @@
 			this.scene = new(this.renderer);
 			this.model = CubeModel.Create(this.renderer);
 			this.camera = new PerspectiveCamera();
-			this.camera.Position = new(-20, 20, -20);
+			this.camera.Position = new(0, 20, 0);
 			this.camera.Direction = new(20, -20, 20);
 
-			for (var z = 0; z < 1; z++)
-			for (var x = 0; x < 2; x++)
+			for (var z = 0; z < 100; z++)
+			for (var x = 0; x < 100; x++)
 			{
 				var instance = new DefaultModelInstance(this.model, this.scene);
 				instance.Position = new(x * 2, 0, z * 2);
