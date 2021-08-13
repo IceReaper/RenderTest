@@ -3,24 +3,26 @@
 	using OpenTK.Graphics.OpenGL;
 	using System;
 	using System.Collections.Generic;
+	using System.Linq;
 
 	public class ModelInstanceBuffer : IDisposable
 	{
+		private const int AllocationSize = 16 << 10 << 10; // MB;
+
 		private readonly int stride;
-
-		private readonly int attributeBufferObject;
-		private readonly int attributeBufferObjectSwap;
-
+		private readonly int buffer;
 		private readonly Dictionary<ModelInstance, int> modelInstanceOffsets = new();
 
-		public int Instances { get; private set; }
+		private int allocated;
+		private int used;
+
+		public int Entries => this.used / this.stride;
 
 		public ModelInstanceBuffer(int stride)
 		{
 			this.stride = stride;
 
-			this.attributeBufferObject = GL.GenBuffer();
-			this.attributeBufferObjectSwap = GL.GenBuffer();
+			this.buffer = GL.GenBuffer();
 		}
 
 		public void Add(ModelInstance modelInstance)
@@ -28,28 +30,16 @@
 			if (this.modelInstanceOffsets.ContainsKey(modelInstance))
 				return;
 
-			var oldSize = this.Instances * this.stride;
-			var newSize = oldSize + this.stride;
+			if (this.used + this.stride > this.allocated)
+			{
+				this.ResizeBuffer(
+					this.allocated
+					+ (this.stride + ModelInstanceBuffer.AllocationSize - 1) / ModelInstanceBuffer.AllocationSize * ModelInstanceBuffer.AllocationSize
+				);
+			}
 
-			GL.BindBuffer(BufferTarget.CopyReadBuffer, this.attributeBufferObject);
-			GL.BindBuffer(BufferTarget.CopyWriteBuffer, this.attributeBufferObjectSwap);
-
-			GL.BufferData(BufferTarget.CopyWriteBuffer, oldSize, IntPtr.Zero, BufferUsageHint.DynamicCopy);
-
-			GL.CopyBufferSubData(BufferTarget.CopyReadBuffer, BufferTarget.CopyWriteBuffer, new(0), new(0), oldSize);
-
-			GL.BindBuffer(BufferTarget.CopyReadBuffer, this.attributeBufferObjectSwap);
-			GL.BindBuffer(BufferTarget.CopyWriteBuffer, this.attributeBufferObject);
-
-			GL.BufferData(BufferTarget.CopyWriteBuffer, newSize, IntPtr.Zero, BufferUsageHint.DynamicCopy);
-			GL.CopyBufferSubData(BufferTarget.CopyReadBuffer, BufferTarget.CopyWriteBuffer, new(0), new(0), oldSize);
-
-			GL.BindBuffer(BufferTarget.CopyReadBuffer, 0);
-			GL.BindBuffer(BufferTarget.CopyWriteBuffer, 0);
-
-			this.modelInstanceOffsets.Add(modelInstance, oldSize);
-
-			this.Instances++;
+			this.modelInstanceOffsets.Add(modelInstance, this.used);
+			this.used += this.stride;
 		}
 
 		public void Remove(ModelInstance modelInstance)
@@ -57,35 +47,53 @@
 			if (!this.modelInstanceOffsets.TryGetValue(modelInstance, out var offset))
 				return;
 
-			var oldSize = this.Instances * this.stride;
-			var newSize = oldSize - this.stride;
+			this.modelInstanceOffsets.Remove(modelInstance);
+			this.used -= this.stride;
 
-			var vAfterStart = offset + this.stride;
-			var vAfterLength = oldSize - vAfterStart;
+			foreach (var other in this.modelInstanceOffsets.Where(e => e.Value > offset).Select(e => e.Key).ToArray())
+				this.modelInstanceOffsets[other] -= this.stride;
 
-			GL.BindBuffer(BufferTarget.CopyReadBuffer, this.attributeBufferObject);
-			GL.BindBuffer(BufferTarget.CopyWriteBuffer, this.attributeBufferObjectSwap);
+			GL.BindBuffer(BufferTarget.CopyReadBuffer, this.buffer);
+			GL.BindBuffer(BufferTarget.CopyWriteBuffer, this.buffer);
 
-			GL.BufferData(BufferTarget.CopyWriteBuffer, newSize, IntPtr.Zero, BufferUsageHint.DynamicCopy);
-
-			if (offset > 0)
-				GL.CopyBufferSubData(BufferTarget.CopyReadBuffer, BufferTarget.CopyWriteBuffer, new(0), new(0), offset);
-
-			if (vAfterLength > 0)
-				GL.CopyBufferSubData(BufferTarget.CopyReadBuffer, BufferTarget.CopyWriteBuffer, new(vAfterStart), new(offset), vAfterLength);
-
-			GL.BindBuffer(BufferTarget.CopyReadBuffer, this.attributeBufferObjectSwap);
-			GL.BindBuffer(BufferTarget.CopyWriteBuffer, this.attributeBufferObject);
-
-			GL.BufferData(BufferTarget.CopyWriteBuffer, newSize, IntPtr.Zero, BufferUsageHint.DynamicCopy);
-			GL.CopyBufferSubData(BufferTarget.CopyReadBuffer, BufferTarget.CopyWriteBuffer, new(0), new(0), newSize);
+			GL.CopyBufferSubData(
+				BufferTarget.CopyReadBuffer,
+				BufferTarget.CopyWriteBuffer,
+				new(offset + this.stride),
+				new(offset),
+				this.used - offset - this.stride
+			);
 
 			GL.BindBuffer(BufferTarget.CopyReadBuffer, 0);
 			GL.BindBuffer(BufferTarget.CopyWriteBuffer, 0);
 
-			this.modelInstanceOffsets.Remove(modelInstance);
+			if (this.allocated - this.used >= ModelInstanceBuffer.AllocationSize)
+				this.ResizeBuffer((this.allocated - this.used) / ModelInstanceBuffer.AllocationSize * ModelInstanceBuffer.AllocationSize);
+		}
 
-			this.Instances--;
+		private void ResizeBuffer(int size)
+		{
+			var temp = GL.GenBuffer();
+
+			GL.BindBuffer(BufferTarget.CopyReadBuffer, this.buffer);
+			GL.BindBuffer(BufferTarget.CopyWriteBuffer, temp);
+
+			GL.BufferData(BufferTarget.CopyWriteBuffer, this.used, IntPtr.Zero, BufferUsageHint.DynamicCopy);
+
+			GL.CopyBufferSubData(BufferTarget.CopyReadBuffer, BufferTarget.CopyWriteBuffer, new(0), new(0), this.used);
+
+			GL.BindBuffer(BufferTarget.CopyReadBuffer, temp);
+			GL.BindBuffer(BufferTarget.CopyWriteBuffer, this.buffer);
+
+			GL.BufferData(BufferTarget.CopyWriteBuffer, size, IntPtr.Zero, BufferUsageHint.DynamicCopy);
+			GL.CopyBufferSubData(BufferTarget.CopyReadBuffer, BufferTarget.CopyWriteBuffer, new(0), new(0), this.used);
+
+			GL.BindBuffer(BufferTarget.CopyReadBuffer, 0);
+			GL.BindBuffer(BufferTarget.CopyWriteBuffer, 0);
+
+			GL.DeleteBuffer(temp);
+
+			this.allocated = size;
 		}
 
 		public void SetData(ModelInstance modelInstance, float[] data)
@@ -93,7 +101,7 @@
 			if (!this.modelInstanceOffsets.TryGetValue(modelInstance, out var offset))
 				return;
 
-			GL.BindBuffer(BufferTarget.CopyWriteBuffer, this.attributeBufferObject);
+			GL.BindBuffer(BufferTarget.CopyWriteBuffer, this.buffer);
 			GL.BufferSubData(BufferTarget.CopyWriteBuffer, new(offset), this.stride, data);
 
 			GL.BindBuffer(BufferTarget.CopyWriteBuffer, 0);
@@ -101,13 +109,12 @@
 
 		public void Bind()
 		{
-			GL.BindBuffer(BufferTarget.ArrayBuffer, this.attributeBufferObject);
+			GL.BindBuffer(BufferTarget.ArrayBuffer, this.buffer);
 		}
 
 		public void Dispose()
 		{
-			GL.DeleteBuffer(this.attributeBufferObjectSwap);
-			GL.DeleteBuffer(this.attributeBufferObject);
+			GL.DeleteBuffer(this.buffer);
 
 			GC.SuppressFinalize(this);
 		}

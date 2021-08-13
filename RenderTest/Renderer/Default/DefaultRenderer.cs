@@ -19,15 +19,18 @@
 			in vec2 aUv;
 
 			in mat4 iTransform;
+			in vec4 iColor;
 
 			out vec3 vNormal;
 			out vec2 vUv;
+			out vec4 vColor;
 
 			void main()
 			{
 				gl_Position = uProjection * uView * iTransform * vec4(aPosition, 1.0);
 				vNormal = aNormal;
 				vUv = aUv;
+				vColor = (iColor * 3.0 + vec4(aNormal, 0.0)) / 4.0;
 			}
 		";
 
@@ -37,12 +40,13 @@
 
 			in vec3 vNormal;
 			in vec2 vUv;
+			in vec4 vColor;
 
 			out vec4 fColor;
 
 			void main()
 			{
-				fColor = vec4(1.0, 1.0, 1.0, 1.0);
+				fColor = vColor;
 			}
 		";
 
@@ -51,7 +55,7 @@
 		private readonly int uProjection;
 		private readonly int uView;
 
-		public override int InstanceStride => 16 * sizeof(float);
+		public override int InstanceStride => (16 + 4) * sizeof(float);
 
 		public DefaultRenderer()
 			: base(DefaultRenderer.VertexShader, DefaultRenderer.FragmentShader, DefaultRenderer.VertexStride)
@@ -76,6 +80,7 @@
 		protected override void LayoutInstancedAttributes()
 		{
 			this.Shader.LayoutAttribute("iTransform", 0, 16, this.InstanceStride, true, 4);
+			this.Shader.LayoutAttribute("iColor", 16, 4, this.InstanceStride, true);
 		}
 
 		public void Render(Scene scene, Camera camera)

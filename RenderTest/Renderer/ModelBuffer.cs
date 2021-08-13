@@ -7,33 +7,35 @@
 
 	public class ModelBuffer : IDisposable
 	{
+		private const int AllocationSize = 16 << 10 << 10; // MB;
+
 		public readonly Dictionary<Model, ModelBufferMapping> ModelBufferMappings = new();
 
 		private readonly int stride;
 
-		private readonly int vertexBufferObject;
-		private readonly int vertexBufferObjectSwap;
-		private readonly int indexBufferObject;
-		private readonly int indexBufferObjectSwap;
 		private readonly int vertexArrayObject;
+		private readonly int vertexBuffer;
+		private readonly int indexBuffer;
 
-		private int vertices;
-		private int indices;
+		private int vertexAllocated;
+		private int vertexUsed;
+		private int vertexAmount;
+
+		private int indexAllocated;
+		private int indexUsed;
+		private int indexAmount;
 
 		public ModelBuffer(Action layoutAttributes, int stride)
 		{
 			this.stride = stride;
 
-			this.vertexBufferObject = GL.GenBuffer();
-			this.vertexBufferObjectSwap = GL.GenBuffer();
-			this.indexBufferObject = GL.GenBuffer();
-			this.indexBufferObjectSwap = GL.GenBuffer();
-
 			this.vertexArrayObject = GL.GenVertexArray();
+			this.vertexBuffer = GL.GenBuffer();
+			this.indexBuffer = GL.GenBuffer();
 
 			GL.BindVertexArray(this.vertexArrayObject);
-			GL.BindBuffer(BufferTarget.ArrayBuffer, this.vertexBufferObject);
-			GL.BindBuffer(BufferTarget.ElementArrayBuffer, this.indexBufferObject);
+			GL.BindBuffer(BufferTarget.ArrayBuffer, this.vertexBuffer);
+			GL.BindBuffer(BufferTarget.ElementArrayBuffer, this.indexBuffer);
 
 			layoutAttributes();
 
@@ -48,46 +50,42 @@
 				return;
 
 			var vAddSize = newVertices.Length * this.stride;
-			var vOldSize = this.vertices * this.stride;
-			var vNewSize = vOldSize + vAddSize;
-
-			GL.BindBuffer(BufferTarget.CopyReadBuffer, this.vertexBufferObject);
-			GL.BindBuffer(BufferTarget.CopyWriteBuffer, this.vertexBufferObjectSwap);
-
-			GL.BufferData(BufferTarget.CopyWriteBuffer, vOldSize, IntPtr.Zero, BufferUsageHint.DynamicCopy);
-			GL.CopyBufferSubData(BufferTarget.CopyReadBuffer, BufferTarget.CopyWriteBuffer, new(0), new(0), vOldSize);
-
-			GL.BindBuffer(BufferTarget.CopyReadBuffer, this.vertexBufferObjectSwap);
-			GL.BindBuffer(BufferTarget.CopyWriteBuffer, this.vertexBufferObject);
-
-			GL.BufferData(BufferTarget.CopyWriteBuffer, vNewSize, IntPtr.Zero, BufferUsageHint.DynamicCopy);
-			GL.CopyBufferSubData(BufferTarget.CopyReadBuffer, BufferTarget.CopyWriteBuffer, new(0), new(0), vOldSize);
-			GL.BufferSubData(BufferTarget.CopyWriteBuffer, new(vOldSize), vAddSize, newVertices.SelectMany(value => value).ToArray());
-
 			var iAddSize = newIndices.Length * sizeof(uint);
-			var iOldSize = this.indices * sizeof(uint);
-			var iNewSize = iOldSize + iAddSize;
 
-			GL.BindBuffer(BufferTarget.CopyReadBuffer, this.indexBufferObject);
-			GL.BindBuffer(BufferTarget.CopyWriteBuffer, this.indexBufferObjectSwap);
+			if (this.vertexUsed + vAddSize > this.vertexAllocated)
+			{
+				this.ResizeVertexBuffer(
+					this.indexAllocated + (vAddSize + ModelBuffer.AllocationSize - 1) / ModelBuffer.AllocationSize * ModelBuffer.AllocationSize
+				);
+			}
 
-			GL.BufferData(BufferTarget.CopyWriteBuffer, iOldSize, IntPtr.Zero, BufferUsageHint.DynamicCopy);
-			GL.CopyBufferSubData(BufferTarget.CopyReadBuffer, BufferTarget.CopyWriteBuffer, new(0), new(0), iOldSize);
+			if (this.indexUsed + vAddSize > this.indexAllocated)
+			{
+				this.ResizeIndexBuffer(
+					this.indexAllocated + (vAddSize + ModelBuffer.AllocationSize - 1) / ModelBuffer.AllocationSize * ModelBuffer.AllocationSize
+				);
+			}
 
-			GL.BindBuffer(BufferTarget.CopyReadBuffer, this.indexBufferObjectSwap);
-			GL.BindBuffer(BufferTarget.CopyWriteBuffer, this.indexBufferObject);
+			GL.BindBuffer(BufferTarget.CopyWriteBuffer, this.vertexBuffer);
+			GL.BufferSubData(BufferTarget.CopyWriteBuffer, new(this.vertexUsed), vAddSize, newVertices.SelectMany(value => value).ToArray());
 
-			GL.BufferData(BufferTarget.CopyWriteBuffer, iNewSize, IntPtr.Zero, BufferUsageHint.DynamicCopy);
-			GL.CopyBufferSubData(BufferTarget.CopyReadBuffer, BufferTarget.CopyWriteBuffer, new(0), new(0), iOldSize);
-			GL.BufferSubData(BufferTarget.CopyWriteBuffer, new(iOldSize), iAddSize, newIndices.Select(value => (uint)(value + this.indices)).ToArray());
+			GL.BindBuffer(BufferTarget.CopyWriteBuffer, this.indexBuffer);
 
-			GL.BindBuffer(BufferTarget.CopyReadBuffer, 0);
+			GL.BufferSubData(
+				BufferTarget.CopyWriteBuffer,
+				new(this.indexUsed),
+				iAddSize,
+				newIndices.Select(value => (uint)(value + this.vertexAmount)).ToArray()
+			);
+
 			GL.BindBuffer(BufferTarget.CopyWriteBuffer, 0);
 
-			this.ModelBufferMappings.Add(model, new(vOldSize, newVertices.Length, iOldSize, newIndices.Length));
+			this.ModelBufferMappings.Add(model, new(this.vertexUsed, newVertices.Length, this.indexUsed, newIndices.Length));
 
-			this.vertices += newVertices.Length;
-			this.indices += newIndices.Length;
+			this.vertexUsed += vAddSize;
+			this.indexUsed += iAddSize;
+			this.vertexAmount += newVertices.Length;
+			this.indexAmount += newIndices.Length;
 		}
 
 		public void Remove(Model model)
@@ -95,72 +93,110 @@
 			if (!this.ModelBufferMappings.TryGetValue(model, out var bufferMapping))
 				return;
 
-			var vDelSize = bufferMapping.VerticesAmount * this.stride;
-			var vOldSize = this.vertices * this.stride;
-			var vNewSize = vOldSize - vDelSize;
-			var vDelStart = bufferMapping.VerticesOffset;
-			var vDelEnd = vDelStart + vDelSize;
-			var vRemaining = vOldSize - vDelEnd;
+			this.ModelBufferMappings.Remove(model);
 
-			GL.BindBuffer(BufferTarget.CopyReadBuffer, this.vertexBufferObject);
-			GL.BindBuffer(BufferTarget.CopyWriteBuffer, this.vertexBufferObjectSwap);
+			this.vertexUsed -= bufferMapping.VertexAmount * this.stride;
+			this.indexUsed -= bufferMapping.IndexAmount * sizeof(uint);
 
-			GL.BufferData(BufferTarget.CopyWriteBuffer, vNewSize, IntPtr.Zero, BufferUsageHint.DynamicCopy);
+			this.vertexAmount -= bufferMapping.VertexAmount;
+			this.indexAmount -= bufferMapping.IndexAmount;
 
-			if (vDelStart > 0)
-				GL.CopyBufferSubData(BufferTarget.CopyReadBuffer, BufferTarget.CopyWriteBuffer, new(0), new(0), vDelStart);
+			foreach (var other in this.ModelBufferMappings.Values.Where(e => e.VertexOffset > bufferMapping.VertexOffset))
+				other.VertexOffset -= bufferMapping.VertexAmount * this.stride;
 
-			if (vRemaining > 0)
-				GL.CopyBufferSubData(BufferTarget.CopyReadBuffer, BufferTarget.CopyWriteBuffer, new(vDelEnd), new(vDelStart), vRemaining);
+			foreach (var other in this.ModelBufferMappings.Values.Where(e => e.IndexOffset > bufferMapping.VertexOffset))
+				other.IndexOffset -= bufferMapping.IndexAmount * sizeof(uint);
 
-			GL.BindBuffer(BufferTarget.CopyReadBuffer, this.vertexBufferObjectSwap);
-			GL.BindBuffer(BufferTarget.CopyWriteBuffer, this.vertexBufferObject);
+			GL.BindBuffer(BufferTarget.CopyReadBuffer, this.vertexBuffer);
+			GL.BindBuffer(BufferTarget.CopyWriteBuffer, this.vertexBuffer);
 
-			GL.BufferData(BufferTarget.CopyWriteBuffer, vNewSize, IntPtr.Zero, BufferUsageHint.DynamicCopy);
-			GL.CopyBufferSubData(BufferTarget.CopyReadBuffer, BufferTarget.CopyWriteBuffer, new(0), new(0), vNewSize);
+			GL.CopyBufferSubData(
+				BufferTarget.CopyReadBuffer,
+				BufferTarget.CopyWriteBuffer,
+				new(bufferMapping.VertexOffset + bufferMapping.VertexAmount * this.stride),
+				new(bufferMapping.VertexOffset),
+				this.vertexUsed - bufferMapping.VertexOffset - bufferMapping.VertexAmount * this.stride
+			);
 
-			var iDelSize = bufferMapping.IndicesAmount * sizeof(uint);
-			var iOldSize = this.indices * sizeof(uint);
-			var iNewSize = iOldSize - iDelSize;
-			var iDelStart = bufferMapping.IndicesOffset;
-			var iDelEnd = iDelStart + iDelSize;
-			var iRemaining = iOldSize - iDelEnd;
+			GL.BindBuffer(BufferTarget.CopyReadBuffer, this.indexBuffer);
+			GL.BindBuffer(BufferTarget.CopyWriteBuffer, this.indexBuffer);
 
-			GL.BindBuffer(BufferTarget.CopyReadBuffer, this.indexBufferObject);
-			GL.BindBuffer(BufferTarget.CopyWriteBuffer, this.indexBufferObjectSwap);
+			var remapIndices = new uint[this.indexUsed - bufferMapping.IndexOffset - bufferMapping.IndexAmount];
 
-			GL.BufferData(BufferTarget.CopyWriteBuffer, iNewSize, IntPtr.Zero, BufferUsageHint.DynamicCopy);
+			GL.GetBufferSubData(
+				BufferTarget.CopyReadBuffer,
+				new(bufferMapping.IndexOffset + bufferMapping.IndexAmount * sizeof(uint)),
+				remapIndices.Length * sizeof(uint),
+				remapIndices
+			);
 
-			if (iDelStart > 0)
-				GL.CopyBufferSubData(BufferTarget.CopyReadBuffer, BufferTarget.CopyWriteBuffer, new(0), new(0), iDelStart);
-
-			if (iRemaining > 0)
-			{
-				var remapIndices = new uint[iRemaining / sizeof(uint)];
-
-				GL.GetBufferSubData(BufferTarget.CopyReadBuffer, new(iDelEnd), iRemaining, remapIndices);
-
-				GL.BufferSubData(
-					BufferTarget.CopyWriteBuffer,
-					new(iDelStart),
-					iRemaining,
-					remapIndices.Select(index => index - bufferMapping.IndicesAmount).ToArray()
-				);
-			}
-
-			GL.BindBuffer(BufferTarget.CopyReadBuffer, this.indexBufferObjectSwap);
-			GL.BindBuffer(BufferTarget.CopyWriteBuffer, this.indexBufferObject);
-
-			GL.BufferData(BufferTarget.CopyWriteBuffer, iNewSize, IntPtr.Zero, BufferUsageHint.DynamicCopy);
-			GL.CopyBufferSubData(BufferTarget.CopyReadBuffer, BufferTarget.CopyWriteBuffer, new(0), new(0), iNewSize);
+			GL.BufferSubData(
+				BufferTarget.CopyWriteBuffer,
+				new(bufferMapping.IndexOffset),
+				remapIndices.Length * sizeof(uint),
+				remapIndices.Select(index => index - bufferMapping.VertexAmount).ToArray()
+			);
 
 			GL.BindBuffer(BufferTarget.CopyReadBuffer, 0);
 			GL.BindBuffer(BufferTarget.CopyWriteBuffer, 0);
 
-			this.ModelBufferMappings.Remove(model);
+			if (this.vertexAllocated - this.vertexUsed >= ModelBuffer.AllocationSize)
+				this.ResizeVertexBuffer((this.vertexAllocated - this.vertexUsed) / ModelBuffer.AllocationSize * ModelBuffer.AllocationSize);
 
-			this.vertices -= bufferMapping.VerticesAmount;
-			this.indices -= bufferMapping.IndicesAmount;
+			if (this.indexAllocated - this.indexUsed >= ModelBuffer.AllocationSize)
+				this.ResizeIndexBuffer((this.indexAllocated - this.indexUsed) / ModelBuffer.AllocationSize * ModelBuffer.AllocationSize);
+
+			this.ModelBufferMappings.Remove(model);
+		}
+
+		private void ResizeVertexBuffer(int size)
+		{
+			var temp = GL.GenBuffer();
+
+			GL.BindBuffer(BufferTarget.CopyReadBuffer, this.vertexBuffer);
+			GL.BindBuffer(BufferTarget.CopyWriteBuffer, temp);
+
+			GL.BufferData(BufferTarget.CopyWriteBuffer, this.vertexUsed, IntPtr.Zero, BufferUsageHint.DynamicCopy);
+
+			GL.CopyBufferSubData(BufferTarget.CopyReadBuffer, BufferTarget.CopyWriteBuffer, new(0), new(0), this.vertexUsed);
+
+			GL.BindBuffer(BufferTarget.CopyReadBuffer, temp);
+			GL.BindBuffer(BufferTarget.CopyWriteBuffer, this.vertexBuffer);
+
+			GL.BufferData(BufferTarget.CopyWriteBuffer, size, IntPtr.Zero, BufferUsageHint.DynamicCopy);
+			GL.CopyBufferSubData(BufferTarget.CopyReadBuffer, BufferTarget.CopyWriteBuffer, new(0), new(0), this.vertexUsed);
+
+			GL.BindBuffer(BufferTarget.CopyReadBuffer, 0);
+			GL.BindBuffer(BufferTarget.CopyWriteBuffer, 0);
+
+			GL.DeleteBuffer(temp);
+
+			this.vertexAllocated = size;
+		}
+
+		private void ResizeIndexBuffer(int size)
+		{
+			var temp = GL.GenBuffer();
+
+			GL.BindBuffer(BufferTarget.CopyReadBuffer, this.indexBuffer);
+			GL.BindBuffer(BufferTarget.CopyWriteBuffer, temp);
+
+			GL.BufferData(BufferTarget.CopyWriteBuffer, this.indexUsed, IntPtr.Zero, BufferUsageHint.DynamicCopy);
+
+			GL.CopyBufferSubData(BufferTarget.CopyReadBuffer, BufferTarget.CopyWriteBuffer, new(0), new(0), this.indexUsed);
+
+			GL.BindBuffer(BufferTarget.CopyReadBuffer, temp);
+			GL.BindBuffer(BufferTarget.CopyWriteBuffer, this.indexBuffer);
+
+			GL.BufferData(BufferTarget.CopyWriteBuffer, size, IntPtr.Zero, BufferUsageHint.DynamicCopy);
+			GL.CopyBufferSubData(BufferTarget.CopyReadBuffer, BufferTarget.CopyWriteBuffer, new(0), new(0), this.indexUsed);
+
+			GL.BindBuffer(BufferTarget.CopyReadBuffer, 0);
+			GL.BindBuffer(BufferTarget.CopyWriteBuffer, 0);
+
+			GL.DeleteBuffer(temp);
+
+			this.indexAllocated = size;
 		}
 
 		public void Bind()
@@ -171,10 +207,8 @@
 		public void Dispose()
 		{
 			GL.DeleteVertexArray(this.vertexArrayObject);
-			GL.DeleteBuffer(this.vertexBufferObjectSwap);
-			GL.DeleteBuffer(this.vertexBufferObject);
-			GL.DeleteBuffer(this.indexBufferObjectSwap);
-			GL.DeleteBuffer(this.indexBufferObject);
+			GL.DeleteBuffer(this.vertexBuffer);
+			GL.DeleteBuffer(this.indexBuffer);
 
 			GC.SuppressFinalize(this);
 		}

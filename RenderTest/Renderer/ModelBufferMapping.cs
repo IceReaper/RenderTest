@@ -1,18 +1,18 @@
 ﻿namespace RenderTest.Renderer
 {
-	public readonly struct ModelBufferMapping
+	public class ModelBufferMapping
 	{
-		public readonly int VerticesOffset;
-		public readonly int VerticesAmount;
-		public readonly int IndicesOffset;
-		public readonly int IndicesAmount;
+		public int VertexOffset;
+		public readonly int VertexAmount;
+		public int IndexOffset;
+		public readonly int IndexAmount;
 
-		public ModelBufferMapping(int verticesOffset, int verticesAmount, int indicesOffset, int indicesAmount)
+		public ModelBufferMapping(int vertexOffset, int vertexAmount, int indexOffset, int indexAmount)
 		{
-			this.VerticesOffset = verticesOffset;
-			this.VerticesAmount = verticesAmount;
-			this.IndicesOffset = indicesOffset;
-			this.IndicesAmount = indicesAmount;
+			this.VertexOffset = vertexOffset;
+			this.VertexAmount = vertexAmount;
+			this.IndexOffset = indexOffset;
+			this.IndexAmount = indexAmount;
 		}
 	}
 }

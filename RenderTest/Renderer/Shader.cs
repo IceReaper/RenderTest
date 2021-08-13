@@ -46,7 +46,7 @@
 			for (var i = 0; i < entries; i++)
 			{
 				GL.EnableVertexAttribArray(index + i);
-				GL.VertexAttribPointer(index + i, entrySize, VertexAttribPointerType.Float, false, stride, offset + i * entrySize * sizeof(float));
+				GL.VertexAttribPointer(index + i, entrySize, VertexAttribPointerType.Float, false, stride, (offset + i * entrySize) * sizeof(float));
 
 				if (instanced)
 					GL.VertexAttribDivisor(index + i, 1);

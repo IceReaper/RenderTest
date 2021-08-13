@@ -45,10 +45,10 @@
 
 				GL.DrawElementsInstanced(
 					PrimitiveType.Triangles,
-					bufferMapping.IndicesAmount,
+					bufferMapping.IndexAmount,
 					DrawElementsType.UnsignedInt,
-					new(bufferMapping.IndicesOffset),
-					modelInstanceBuffer.Instances
+					new(bufferMapping.IndexOffset),
+					modelInstanceBuffer.Entries
 				);
 			}
 
