@@ -39,15 +39,23 @@
 			GL.DeleteShader(fragmentShader);
 		}
 
-		public void LayoutAttribute(string name, int offset, int amount, int stride, bool instanced, int entries = 1)
+		public void LayoutAttribute(
+			string name,
+			int offset,
+			int components,
+			VertexAttribPointerType type,
+			int vertexStride,
+			bool instanced,
+			int entries = 1,
+			int entryShift = 0
+		)
 		{
 			var index = GL.GetAttribLocation(this.program, name);
-			var entrySize = amount / entries;
 
 			for (var i = 0; i < entries; i++)
 			{
 				GL.EnableVertexAttribArray(index + i);
-				GL.VertexAttribPointer(index + i, entrySize, VertexAttribPointerType.Float, false, stride, (offset + i * entrySize) * sizeof(float));
+				GL.VertexAttribPointer(index + i, components / entries, type, false, vertexStride, offset + entryShift * i);
 
 				if (instanced)
 					GL.VertexAttribDivisor(index + i, 1);

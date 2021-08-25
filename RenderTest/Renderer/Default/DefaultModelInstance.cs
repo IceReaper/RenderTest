@@ -42,6 +42,18 @@
 
 		private Vector3 scale = Vector3.One;
 
+		public Texture? Texture
+		{
+			get => this.texture;
+			set
+			{
+				this.texture = value;
+				this.Invalidate();
+			}
+		}
+
+		private Texture? texture;
+
 		public Vector4 Color
 		{
 			get => this.color;
@@ -82,12 +94,10 @@
 					transform.M41,
 					transform.M42,
 					transform.M43,
-					transform.M44,
-					this.color.X,
-					this.color.Y,
-					this.color.Z,
-					this.color.W
+					transform.M44
 				}.SelectMany(BitConverter.GetBytes)
+				.Concat(BitConverter.GetBytes(this.texture?.Handle ?? 0L))
+				.Concat(new[] { this.color.X, this.color.Y, this.color.Z, this.color.W }.SelectMany(BitConverter.GetBytes))
 				.ToArray();
 		}
 	}

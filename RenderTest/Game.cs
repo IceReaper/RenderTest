@@ -33,13 +33,16 @@
 			stopwatch.Start();
 			var random = new Random();
 
-			for (var z = 0; z < 1000; z++)
-			for (var x = 0; x < 1000; x++)
+			var texture = new Texture(1, 1, new byte[] { 0xff, 0xff, 0xff, 0xff });
+
+			for (var z = 0; z < 10; z++)
+			for (var x = 0; x < 10; x++)
 			{
 				var instance = new DefaultModelInstance(random.NextSingle() < .5 ? this.model1 : this.model2, this.scene);
 				instance.Position = new(x * 2, 0, z * 2);
 				instance.Scale = new(.5f + random.NextSingle(), .5f + random.NextSingle(), .5f + random.NextSingle());
 				instance.Rotation = new(random.NextSingle(), random.NextSingle(), random.NextSingle());
+				instance.Texture = texture;
 				instance.Color = new(random.NextSingle(), random.NextSingle(), random.NextSingle(), 1);
 			}
 
