@@ -63,13 +63,9 @@
 		{
 			var stopwatch = new Stopwatch();
 			stopwatch.Start();
-
 			GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
-
 			this.renderer.Render(this.scene, this.camera);
-
 			this.window.Context.SwapBuffers();
-
 			stopwatch.Stop();
 			this.window.Title = $"Frame took {stopwatch.Elapsed.TotalMilliseconds}";
 		}
@@ -80,7 +76,6 @@
 			this.model1.Dispose();
 			this.model2.Dispose();
 			this.renderer.Dispose();
-
 			GC.SuppressFinalize(this);
 		}
 	}

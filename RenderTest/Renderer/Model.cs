@@ -5,10 +5,13 @@
 	public class Model : IDisposable
 	{
 		private readonly Renderer renderer;
+		public readonly int Indices;
 
-		public Model(Renderer renderer, float[][] vertices, uint[] indices)
+		public Model(Renderer renderer, byte[] vertices, int[] indices)
 		{
 			this.renderer = renderer;
+			this.Indices = indices.Length;
+
 			this.renderer.Add(this, vertices, indices);
 		}
 

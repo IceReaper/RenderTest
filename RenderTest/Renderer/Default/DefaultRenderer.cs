@@ -2,8 +2,6 @@
 {
 	using Cameras;
 	using OpenTK.Graphics.OpenGL;
-	using OpenTK.Mathematics;
-	using System.Diagnostics.CodeAnalysis;
 
 	public class DefaultRenderer : Renderer
 	{
@@ -50,34 +48,27 @@
 			}
 		";
 
-		private const int VertexStride = (3 + 3 + 2) * sizeof(float);
-
 		private readonly int uProjection;
 		private readonly int uView;
 
+		protected override int VertexStride => (3 + 3 + 2) * sizeof(float);
 		public override int InstanceStride => (16 + 4) * sizeof(float);
 
 		public DefaultRenderer()
-			: base(DefaultRenderer.VertexShader, DefaultRenderer.FragmentShader, DefaultRenderer.VertexStride)
+			: base(DefaultRenderer.VertexShader, DefaultRenderer.FragmentShader)
 		{
-			this.uProjection = GL.GetUniformLocation(this.Shader.Program, "uProjection");
-			this.uView = GL.GetUniformLocation(this.Shader.Program, "uView");
+			this.uProjection = this.Shader.GetUniform("uProjection");
+			this.uView = this.Shader.GetUniform("uView");
 		}
 
-		[SuppressMessage("ReSharper", "UseDeconstructionOnParameter")]
-		public static float[] CreateVertex(Vector3 position, Vector3 normal, Vector2 uv)
+		public override void LayoutVertexAttributes()
 		{
-			return new[] { position.X, position.Y, position.Z, normal.X, normal.Y, normal.Z, uv.X, uv.Y };
+			this.Shader.LayoutAttribute("aPosition", 0, 3, this.VertexStride, false);
+			this.Shader.LayoutAttribute("aNormal", 3, 3, this.VertexStride, false);
+			this.Shader.LayoutAttribute("aUv", 6, 2, this.VertexStride, false);
 		}
 
-		protected override void LayoutAttributes()
-		{
-			this.Shader.LayoutAttribute("aPosition", 0, 3, DefaultRenderer.VertexStride, false);
-			this.Shader.LayoutAttribute("aNormal", 3, 3, DefaultRenderer.VertexStride, false);
-			this.Shader.LayoutAttribute("aUv", 6, 2, DefaultRenderer.VertexStride, false);
-		}
-
-		protected override void LayoutInstancedAttributes()
+		public override void LayoutInstanceAttributes()
 		{
 			this.Shader.LayoutAttribute("iTransform", 0, 16, this.InstanceStride, true, 4);
 			this.Shader.LayoutAttribute("iColor", 16, 4, this.InstanceStride, true);
@@ -85,17 +76,17 @@
 
 		public void Render(Scene scene, Camera camera)
 		{
-			GL.UseProgram(this.Shader.Program);
-
 			var projection = camera.GetProjectionMatrix();
 			var view = camera.GetViewMatrix();
+
+			this.Shader.Bind();
 
 			GL.UniformMatrix4(this.uProjection, false, ref projection);
 			GL.UniformMatrix4(this.uView, false, ref view);
 
-			base.Render(scene);
+			scene.Render();
 
-			GL.UseProgram(0);
+			this.Shader.Unbind();
 		}
 	}
 }

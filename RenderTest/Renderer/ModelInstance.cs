@@ -15,11 +15,11 @@
 			this.scene.Add(this);
 		}
 
-		protected abstract float[] GetData();
+		public abstract byte[] GetData();
 
-		protected void UpdateData()
+		protected void Invalidate()
 		{
-			this.scene.SetData(this, this.GetData());
+			this.scene.Invalidate(this);
 		}
 
 		public void Dispose()

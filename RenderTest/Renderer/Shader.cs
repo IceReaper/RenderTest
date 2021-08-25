@@ -5,7 +5,8 @@
 
 	public class Shader : IDisposable
 	{
-		public readonly int Program;
+		private readonly int program;
+		private bool bound;
 
 		public Shader(string vertexShaderSource, string fragmentShaderSource)
 		{
@@ -25,11 +26,11 @@
 			if (!string.IsNullOrWhiteSpace(fragmentShaderError))
 				throw new(fragmentShaderError);
 
-			this.Program = GL.CreateProgram();
-			GL.AttachShader(this.Program, vertexShader);
-			GL.AttachShader(this.Program, fragmentShader);
-			GL.LinkProgram(this.Program);
-			GL.GetProgramInfoLog(this.Program, out var programError);
+			this.program = GL.CreateProgram();
+			GL.AttachShader(this.program, vertexShader);
+			GL.AttachShader(this.program, fragmentShader);
+			GL.LinkProgram(this.program);
+			GL.GetProgramInfoLog(this.program, out var programError);
 
 			if (!string.IsNullOrWhiteSpace(programError))
 				throw new(programError);
@@ -40,7 +41,7 @@
 
 		public void LayoutAttribute(string name, int offset, int amount, int stride, bool instanced, int entries = 1)
 		{
-			var index = GL.GetAttribLocation(this.Program, name);
+			var index = GL.GetAttribLocation(this.program, name);
 			var entrySize = amount / entries;
 
 			for (var i = 0; i < entries; i++)
@@ -53,9 +54,29 @@
 			}
 		}
 
+		public int GetUniform(string location)
+		{
+			return GL.GetUniformLocation(this.program, location);
+		}
+
+		public void Bind()
+		{
+			GL.UseProgram(this.program);
+			this.bound = true;
+		}
+
+		public void Unbind()
+		{
+			GL.UseProgram(0);
+			this.bound = false;
+		}
+
 		public void Dispose()
 		{
-			GL.DeleteProgram(this.Program);
+			if (this.bound)
+				this.Unbind();
+
+			GL.DeleteProgram(this.program);
 			GC.SuppressFinalize(this);
 		}
 	}

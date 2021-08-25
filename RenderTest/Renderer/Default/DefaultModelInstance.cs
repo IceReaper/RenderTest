@@ -1,6 +1,8 @@
 ﻿namespace RenderTest.Renderer.Default
 {
 	using OpenTK.Mathematics;
+	using System;
+	using System.Linq;
 
 	public class DefaultModelInstance : ModelInstance
 	{
@@ -10,7 +12,7 @@
 			set
 			{
 				this.position = value;
-				this.UpdateData();
+				this.Invalidate();
 			}
 		}
 
@@ -22,7 +24,7 @@
 			set
 			{
 				this.rotation = value;
-				this.UpdateData();
+				this.Invalidate();
 			}
 		}
 
@@ -34,7 +36,7 @@
 			set
 			{
 				this.scale = value;
-				this.UpdateData();
+				this.Invalidate();
 			}
 		}
 
@@ -46,7 +48,7 @@
 			set
 			{
 				this.color = value;
-				this.UpdateData();
+				this.Invalidate();
 			}
 		}
 
@@ -55,38 +57,38 @@
 		public DefaultModelInstance(Model model, Scene scene)
 			: base(model, scene)
 		{
-			this.UpdateData();
 		}
 
-		protected override float[] GetData()
+		public override byte[] GetData()
 		{
 			var transform = Matrix4.CreateScale(this.scale)
 				* Matrix4.CreateFromQuaternion(Quaternion.FromEulerAngles(this.rotation))
 				* Matrix4.CreateTranslation(this.position);
 
 			return new[]
-			{
-				transform.M11,
-				transform.M12,
-				transform.M13,
-				transform.M14,
-				transform.M21,
-				transform.M22,
-				transform.M23,
-				transform.M24,
-				transform.M31,
-				transform.M32,
-				transform.M33,
-				transform.M34,
-				transform.M41,
-				transform.M42,
-				transform.M43,
-				transform.M44,
-				this.color.X,
-				this.color.Y,
-				this.color.Z,
-				this.color.W
-			};
+				{
+					transform.M11,
+					transform.M12,
+					transform.M13,
+					transform.M14,
+					transform.M21,
+					transform.M22,
+					transform.M23,
+					transform.M24,
+					transform.M31,
+					transform.M32,
+					transform.M33,
+					transform.M34,
+					transform.M41,
+					transform.M42,
+					transform.M43,
+					transform.M44,
+					this.color.X,
+					this.color.Y,
+					this.color.Z,
+					this.color.W
+				}.SelectMany(BitConverter.GetBytes)
+				.ToArray();
 		}
 	}
 }
